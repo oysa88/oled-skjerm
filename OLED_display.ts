@@ -94,3 +94,810 @@ namespace kitronik_VIEW128x64 {
     font[84] = 0x0010fc21;  // T 
     font[85] = 0x0007c20f;  // U 
     font[86] = 0x00744107;  // V
+    font[87] = 0x01f4111f;  // W 
+    font[88] = 0x000d909b;  // X 
+    font[89] = 0x00117041;  // Y 
+    font[90] = 0x0008ceb9;  // Z
+    font[91] = 0x0008c7e0;  // [
+    font[92] = 0x01041041;  // \
+    font[93] = 0x000fc620;  // ]
+    font[94] = 0x00010440;  // ^
+    font[95] = 0x01084210;  // _ 
+    font[96] = 0x00000820;  // `
+    font[97] = 0x010f4a4c;  // a 
+    font[98] = 0x0004529f;  // b 
+    font[99] = 0x00094a4c;  // c 
+    font[100] = 0x000fd288; // d 
+    font[101] = 0x000956ae; // e 
+    font[102] = 0x000097c4; // f 
+    font[103] = 0x0007d6a2; // g 
+    font[104] = 0x000c109f; // h 
+    font[105] = 0x000003a0; // i 
+    font[106] = 0x0006c200; // j 
+    font[107] = 0x0008289f; // k 
+    font[108] = 0x000841e0; // l 
+    font[109] = 0x01e1105e; // m 
+    font[110] = 0x000e085e; // n 
+    font[111] = 0x00064a4c; // o 
+    font[112] = 0x0002295e; // p 
+    font[113] = 0x000f2944; // q 
+    font[114] = 0x0001085c; // r 
+    font[115] = 0x00012a90; // s 
+    font[116] = 0x010a51e0; // t 
+    font[117] = 0x010f420e; // u 
+    font[118] = 0x00644106; // v 
+    font[119] = 0x01e8221e; // w 
+    font[120] = 0x00093192; // x 
+    font[121] = 0x00222292; // y 
+    font[122] = 0x00095b52; // z
+    font[123] = 0x0008fc80; // {
+    font[124] = 0x000003e0; // |
+    font[125] = 0x000013f1; // }
+    font[126] = 0x00841080; // ~
+    font[127] = 0x0022d422; // DEL
+
+
+    /**
+     * Select the alignment of text
+     */
+    export enum ShowAlign {
+        //% block="Venstre"
+        Left,
+        //% block="Senter"
+        Centre,
+        //% block="Høyre"
+        Right
+    }
+
+    /**
+     * Select direction for drawing lines
+     */
+    export enum LineDirectionSelection {
+        //% block="horisontal"
+        horizontal,
+        //% block="vertikal"
+        vertical
+    }
+
+    /**
+     * Select size for drawing text
+     */
+    export enum FontSelection {
+        //% block="Normal"
+        Normal,
+        //% block="Stor"
+        Big,
+        //% block="Gigantisk"
+        Giant
+    }
+
+    // Variables for Display
+    let numberOfCharPerLine = 25
+    let fontZoom = 1
+    let globalZoomSet = false
+
+    // Default address for the display
+    let DISPLAY_ADDR_1 = 60
+    let DISPLAY_ADDR_2 = 10
+    let displayAddress = DISPLAY_ADDR_1;
+
+    // Text alignment, defaulted to "Left"
+    let displayShowAlign = ShowAlign.Left
+
+    // Plot variables
+    let plotArray: number[] = []
+    let plottingEnable = 0
+    let plotData = 0;
+    let graphYMin = 0
+    let graphYMax = 100
+    let graphRange = 100
+    let GRAPH_Y_MIN_LOCATION = 63
+    let GRAPH_Y_MAX_LOCATION = 20
+    let previousYPlot = 0
+
+    // Screen buffers for sending data to the display
+    let screenBuf = pins.createBuffer(1025);
+    let ackBuf = pins.createBuffer(2);
+    let writeOneByteBuf = pins.createBuffer(2);
+    let writeTwoByteBuf = pins.createBuffer(3);
+    let writeThreeByteBuf = pins.createBuffer(4);
+
+    let initialised = 0    		// Flag to indicate automatic initalisation of the display
+
+    // Function to write one byte of data to the display
+    function writeOneByte(regValue: number) {
+        writeOneByteBuf[0] = 0;
+        writeOneByteBuf[1] = regValue;
+        pins.i2cWriteBuffer(displayAddress, writeOneByteBuf);
+    }
+
+    // Function to write two bytes of data to the display
+    function writeTwoByte(regValue1: number, regValue2: number) {
+        writeTwoByteBuf[0] = 0;
+        writeTwoByteBuf[1] = regValue1;
+        writeTwoByteBuf[2] = regValue2;
+        pins.i2cWriteBuffer(displayAddress, writeTwoByteBuf);
+    }
+
+    // Function to write three bytes of data to the display
+    function writeThreeByte(regValue1: number, regValue2: number, regValue3: number) {
+        writeThreeByteBuf[0] = 0;
+        writeThreeByteBuf[1] = regValue1;
+        writeThreeByteBuf[2] = regValue2;
+        writeThreeByteBuf[3] = regValue3;
+        pins.i2cWriteBuffer(displayAddress, writeThreeByteBuf);
+    }
+
+    // Set the starting on the display for writing text
+    function set_pos(col: number = 0, page: number = 0) {
+        writeOneByte(0xb0 | page) // page number
+        writeOneByte(0x00 | (col % 16)) // lower start column address
+        writeOneByte(0x10 | (col >> 4)) // upper start column address    
+    }
+
+    // Set the particular data byte on the screen for clearing
+    function clearBit(d: number, b: number): number {
+        if (d & (1 << b))
+            d -= (1 << b)
+        return d
+    }
+
+    // Return the correct display I2C address based on selection
+    function setScreenAddr(selection: number): number {
+        let addr = 0
+        if (selection == 1) {
+            addr = DISPLAY_ADDR_1
+        }
+        else if (selection == 2) {
+            addr = DISPLAY_ADDR_2
+        }
+        else {
+            addr = DISPLAY_ADDR_1
+        }
+        return addr
+    }
+
+    /**
+     * Setup the display ready for use (function on available in text languages, not blocks)
+     * @param screen is the selection of which screen to initialise
+     */
+    export function initDisplay(screen?: number): void {
+
+        displayAddress = setScreenAddr(screen)
+        // Load the ackBuffer to check if there is a display there before starting initalisation
+        ackBuf[0] = 0
+        ackBuf[1] = 0xAF
+        let ack = pins.i2cWriteBuffer(displayAddress, ackBuf)
+
+        if (ack == -1010)      // If returned value back is -1010, there is no display so show error message
+            basic.showString("ERROR - no display")
+
+        else {   // Start initalising the display
+
+            writeOneByte(0xAE)              // SSD1306_DISPLAYOFF
+            writeOneByte(0xA4)              // SSD1306_DISPLAYALLON_RESUME
+            writeTwoByte(0xD5, 0xF0)        // SSD1306_SETDISPLAYCLOCKDIV
+            writeTwoByte(0xA8, 0x3F)        // SSD1306_SETMULTIPLEX
+            writeTwoByte(0xD3, 0x00)        // SSD1306_SETDISPLAYOFFSET
+            writeOneByte(0 | 0x0)           // line #SSD1306_SETSTARTLINE
+            writeTwoByte(0x8D, 0x14)        // SSD1306_CHARGEPUMP
+            writeTwoByte(0x20, 0x00)        // SSD1306_MEMORYMODE
+            writeThreeByte(0x21, 0, 127)    // SSD1306_COLUMNADDR
+            writeThreeByte(0x22, 0, 63)     // SSD1306_PAGEADDR
+            writeOneByte(0xa0 | 0x1)        // SSD1306_SEGREMAP
+            writeOneByte(0xc8)              // SSD1306_COMSCANDEC
+            writeTwoByte(0xDA, 0x12)        // SSD1306_SETCOMPINS
+            writeTwoByte(0x81, 0xCF)        // SSD1306_SETCONTRAST
+            writeTwoByte(0xd9, 0xF1)        // SSD1306_SETPRECHARGE
+            writeTwoByte(0xDB, 0x40)        // SSD1306_SETVCOMDETECT
+            writeOneByte(0xA6)              // SSD1306_NORMALDISPLAY
+            writeTwoByte(0xD6, 0)           // Zoom is set to off
+            writeOneByte(0xAF)              // SSD1306_DISPLAYON
+            initialised = 1
+            clear()
+        }
+    }
+
+    /**
+     * Using (x, y) coordinates, turn on a selected pixel on the screen.
+     * @param x is the X axis value, eg: 0
+     * @param y is the Y axis value, eg: 0
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_set_pixel" block=" vis på x %x|y %y"
+    //% group="Vis på skjerm"
+    //% weight=70 blockGap=8
+    //% x.min=0, x.max=127
+    //% y.min=0, y.max=63
+    //% inlineInputMode=inline
+    export function setPixel(x: number, y: number, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay()
+
+        if (x < 0)
+            x = 0
+
+        if (x > 127)
+            x = 127
+
+        if (y < 0)
+            y = 0
+
+        if (y > 63)
+            y = 63
+
+        let page = y >> 3
+        let shift_page = y % 8                                  // Calculate the page to write to
+        let ind = x + page * 128 + 1                            // Calculate which register in the page to write to
+        let screenPixel = (screenBuf[ind] | (1 << shift_page))  // Set the screen data byte
+        screenBuf[ind] = screenPixel                            // Store data in screen buffer
+        set_pos(x, page)                                        // Set the position on the screen to write at 
+        writeOneByteBuf[0] = 0x40                               // Load buffer with command
+        writeOneByteBuf[1] = screenPixel                        // Load buffer with byte
+        pins.i2cWriteBuffer(displayAddress, writeOneByteBuf)    // Send data to screen
+    }
+
+    /**
+     * Using the (x, y) coordinates, clear a selected pixel on the screen.
+     * @param x is the X axis value, eg: 0
+     * @param y is the Y axis value, eg: 0
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_clear_pixel" block="fjern pixel på x %x|y %y"
+    //% group="Fjern fra skjerm"
+    //% weight=70 blockGap=8
+    //% x.min=0, x.max=127
+    //% y.min=0, y.max=63
+    //% inlineInputMode=inline
+    export function clearPixel(x: number, y: number, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        if (x < 0)
+            x = 0
+
+        if (x > 127)
+            x = 127
+
+        if (y < 0)
+            y = 0
+
+        if (y > 63)
+            y = 63
+
+        let page2 = y >> 3
+        let shift_page2 = y % 8                                     // Calculate the page to write to
+        let ind2 = x + page2 * 128 + 1                              // Calculate which register in the page to write to
+        let screenPixel2 = clearBit(screenBuf[ind2], shift_page2)   // Clear the screen data byte
+        screenBuf[ind2] = screenPixel2                              // Store data in screen buffer
+        set_pos(x, page2)                                           // Set the position on the screen to write at 
+        writeOneByteBuf[0] = 0x40                                   // Load buffer with command
+        writeOneByteBuf[1] = screenPixel2                           // Load buffer with byte
+        pins.i2cWriteBuffer(displayAddress, writeOneByteBuf)        // Send data to screen
+    }
+
+    /**
+     * Change the font size between normal and big. Font size is double in big.
+     * @param fontSize is the size that will be used for the text shown
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId=VIEW128x64_set_font_size
+    //% block="sett font-størrelse til %fontSize"
+    //% group="Kontroller skjerm"
+    //% weight=80 blockGap=8
+    export function setFontSize(fontSize: FontSelection, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        globalZoomSet = true
+
+        if (fontSize == FontSelection.Giant) {
+            numberOfCharPerLine = 6
+            fontZoom = 4
+
+        } else if (fontSize == FontSelection.Big) {
+            numberOfCharPerLine = 12
+            fontZoom = 2
+
+        } else {
+            numberOfCharPerLine = 25
+            fontZoom = 1
+        }
+    }
+
+    /**
+     * 'show' allows any number, string or variable to be displayed on the screen.
+     * The block is expandable to set the line and alignment.
+     * @param displayShowAlign is the alignment of the text, this can be left, centre or right
+     * @param line is line the text to be started on, eg: 1
+     * @param inputData is the text will be show
+     * @param fontSize is the size that will be used for the text shown
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_show"
+    //% block="vis %inputData || på linje %line | med justering: %displayShowAlign | og størrelse: %fontSize"
+    //% weight=80 blockGap=8
+    //% group="Vis på skjerm"
+    //% expandableArgumentMode="enable"
+    //% inlineInputMode=inline
+    //% line.min=1 line.max=8
+    export function show(
+        inputData: any,
+        line?: number,
+        displayShowAlign?: ShowAlign,
+        fontSize?: FontSelection,
+        screen?: 1
+    ) {
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        // Bruk størrelsen fra denne blokken dersom ingen
+        // global størrelse er valgt med setFontSize().
+        if (!globalZoomSet) {
+            if (fontSize == FontSelection.Giant) {
+                fontZoom = 4
+            } else if (fontSize == FontSelection.Big) {
+                fontZoom = 2
+            } else {
+                fontZoom = 1
+            }
+        }
+
+        let charWidth = 5 * fontZoom
+        let lineHeight = 8 * fontZoom
+
+        numberOfCharPerLine = Math.floor(128 / charWidth)
+        let maxLines = Math.floor(64 / lineHeight)
+
+        if (!line)
+            line = 1
+
+        line = Math.max(1, Math.min(line, maxLines))
+
+        let inputString = convertToText(inputData)
+        let textOffset = 0
+        let row = line - 1
+
+        while (textOffset < inputString.length && row < maxLines) {
+            let displayString = inputString.substr(
+                textOffset, numberOfCharPerLine
+            )
+
+            let startX = 0
+            let textWidth = displayString.length * charWidth
+
+            if (displayShowAlign == ShowAlign.Centre) {
+                startX = Math.floor((128 - textWidth) / 2)
+            } else if (displayShowAlign == ShowAlign.Right) {
+                startX = 128 - textWidth
+            }
+
+            let startY = row * lineHeight
+
+            // Sentrer én linje med gigantisk tekst vertikalt.
+            if (fontZoom == 4 && inputString.length <= numberOfCharPerLine && row == 0) {
+                startY = Math.floor((64 - lineHeight) / 2)
+            }
+
+            for (let c = 0; c < displayString.length; c++) {
+                let charCode = displayString.charCodeAt(c)
+
+                // Bruk spørsmålstegn for tegn som mangler i fonten.
+                if (charCode >= font.length)
+                    charCode = 63
+
+                let charBytes = font[charCode]
+
+                // Build each scaled column once, then copy whole bytes.
+                // Text placement and the Giant font keep the original geometry.
+                let firstPage = Math.idiv(startY, 8)
+                for (let sourceX = 0; sourceX < 5; sourceX++) {
+                    let columnBits = 0
+                    for (let sourceY = 0; sourceY < 5; sourceY++) {
+                        if ((charBytes & (1 << (5 * sourceX + sourceY))) != 0) {
+                            for (let repeatY = 0; repeatY < fontZoom; repeatY++) {
+                                columnBits |= 1 << ((sourceY + 1) * fontZoom + repeatY)
+                            }
+                        }
+                    }
+                    for (let repeatX = 0; repeatX < fontZoom; repeatX++) {
+                        let pixelX = startX + c * charWidth + sourceX * fontZoom + repeatX
+                        for (let pageOffset = 0; pageOffset < fontZoom; pageOffset++) {
+                            let index = 1 + pixelX + (firstPage + pageOffset) * 128
+                            screenBuf[index] = (columnBits >>> (pageOffset * 8)) & 0xff
+                        }
+                    }
+                }
+                // Allow the NeoPixel animation to run between characters.
+                basic.pause(1)
+            }
+
+            textOffset += numberOfCharPerLine
+            row++
+        }
+
+        refresh(screen)
+    }
+
+    /**
+     * Clear a specific line on the screen (1 to 8).
+     * @param line is line to clear, eg: 1
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_clear_line" block="fjern linje %line"
+    //% weight=80 blockGap=8
+    //% group="Fjern fra skjerm"
+    //% expandableArgumentMode="enable"
+    //% inlineInputMode=inline
+    //% line.min=1 line.max=8
+    export function clearLine(line: number, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        if (fontZoom == 4)
+            show("      ", line)
+
+        else if (fontZoom == 2)
+            show("            ", line)
+
+        else
+            show("                         ", line)
+    }
+
+    /**
+     * Draw a line of a specific length in pixels, using the (x, y) coordinates as a starting point.
+     * @param lineDirection is the selection of either horizontal line or vertical line
+     * @param x is start position on the X axis, eg: 0
+     * @param y is start position on the Y axis, eg: 0
+     * @param len is the length of line, length is the number of pixels, eg: 10
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_draw_line" block="tegn en %lineDirection | linje med lengde på %len som starter ved x %x|y %y"
+    //% weight=72 blockGap=8
+    //% group="Tegn på skjerm"
+    //% x.min=0, x.max=127
+    //% y.min=0, y.max=63
+    //% len.min=-128, len.max=128
+    //% inlineInputMode=inline
+    export function drawLine(lineDirection: LineDirectionSelection, len: number, x: number, y: number, screen?: 1) {
+
+        if (x < 0)
+            x = 0
+
+        if (x > 127)
+            x = 127
+
+        if (y < 0)
+            y = 0
+
+        if (y > 63)
+            y = 63
+
+        if (lineDirection == LineDirectionSelection.horizontal) {
+
+            if (len > 128) //check line length is not greater than screen length
+                len = 128       //if so, set to screen length max
+
+            else if (len < 0) {  //check if the line is a negative number
+
+                if (len < -128)   //limit to maximum screen length as a negative number
+                    len = -128      //set max negative line limit horizontal
+
+                len = Math.abs(len) //take absolute of the number for the length
+                x = x - len         //move the X point to the start of the line as drawing left to riight
+
+                if (x < 0) {         //check if X is now a negative number
+
+                    len = len + x   //if so then length calulated to 0 point
+                    x = 0           //x is now 0
+                }
+            }
+
+            if ((x + len) > 128)     //check that the length of line from the X start point does not exceed the screen limits
+                len = 128 - x       //if so adjust length to the length from X to the end of screen
+
+            for (let hPixel = x; hPixel < (x + len); hPixel++)      // Loop to set the pixels in the horizontal line
+                setPixel(hPixel, y, screen)
+        } else if (lineDirection == LineDirectionSelection.vertical) {
+
+            if (len > 64)          // check for max vertical length
+                len = 64            //if so, set to screen height max
+
+            else if (len < 0) {     //check if the line is a negative number
+
+                if (len < -64)    //limit to maximum screen length as a negative number
+                    len = -64       //set max negative line limit vertically
+
+                len = Math.abs(len) //take absolute value of length and adjust the y value
+                y = y - len         //move the Y point to the start of the line as drawing left to riight
+
+                if (y < 0) {    //check the y has not gone below 0
+
+                    len = len + y   //if so then length calulated to 0 point
+                    y = 0           //y is now 0
+                }
+            }
+
+            if ((y + len) > 64)   //check that the length of line from the Y start point does not exceed the screen limits
+                len = 64 - y        //if so adjust length to the length from X to the end of screen
+
+            for (let vPixel = y; vPixel < (y + len); vPixel++)      // Loop to set the pixels in the vertical line
+                setPixel(x, vPixel, screen)
+        }
+    }
+
+    /**
+     * Draw a rectangle with a specific width and height in pixels, using the (x, y) coordinates as a starting point.
+     * @param width is width of the rectangle, eg: 60
+     * @param height is height of the rectangle, eg: 30
+     * @param x is the start position on the X axis, eg: 0
+     * @param y is the start position on the Y axis, eg: 0
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_draw_rect" block="tegn et rektangel %width|bred %height|høy fra posisjon x %x|y %y"
+    //% weight=71 blockGap=8
+    //% group="Tegn på skjerm"
+    //% inlineInputMode=inline
+    //% width.min=1 width.max=127
+    //% height.min=1 height.max=63
+    //% x.min=0 x.max=127
+    //% y.min=0 y.max=63
+    export function drawRect(width: number, height: number, x: number, y: number, screen?: 1) {
+
+        if (!x)    // If variable 'x' has not been used, default to x position of 0
+            x = 0
+
+        if (!y)    // If variable 'y' has not been used, default to y position of 0
+            y = 0
+
+        // Draw the lines for each side of the rectangle
+        drawLine(LineDirectionSelection.horizontal, width, x, y, screen)
+        drawLine(LineDirectionSelection.horizontal, width + 1, x, y + height, screen)
+        drawLine(LineDirectionSelection.vertical, height, x, y, screen)
+        drawLine(LineDirectionSelection.vertical, height + 1, x + width, y, screen)
+    }
+
+    /**
+     * Clear all pixels, text and images on the screen.
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_clear" block="fjern alt på skjermen"
+    //% group="Fjern fra skjerm"
+    //% weight=63 blockGap=8
+    export function clear(screen?: number) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        screenBuf.fill(0)       // Fill the screenBuf with all '0'
+        screenBuf[0] = 0x40
+        sendScreenBuffer(displayAddress)
+    }
+
+    /**
+     * Turn the screen on and off. The information on the screen will be kept when it is off, ready to be displayed again.
+     * @param displayOutput is the boolean setting for the screen, either ON or OFF
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId=VIEW128x64_display_on_off_control
+    //% block="skru %displayOutput=on_off_toggle| OLED-skjerm"
+    //% group="Kontroller skjerm"
+    //% expandableArgumentMode="toggle"
+    //% weight=80 blockGap=8
+    export function controlDisplayOnOff(displayOutput: boolean, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        if (displayOutput == true)
+            writeOneByte(0xAF)      // Turn display output on
+
+        else
+            writeOneByte(0xAE)      // Turn display output off
+    }
+
+    /**
+     * Render a boolean as an on/off toggle
+     */
+    //% blockId=on_off_toggle
+    //% block="$on"
+    //% on.shadow="toggleOnOff"
+    //% blockHidden=true
+    export function onOff(on: boolean): boolean {
+        return on;
+    }
+
+
+    //////////////////////////////////////
+    //
+    //      Plotting blocks
+    //
+    //////////////////////////////////////
+
+    /**
+     * Start plotting a live graph of the chosen variable or input on the screen. 
+     * @param plotVariable is the variable to be recorded on a graph on the display
+     * @param screen is screen selection when using multiple screens
+     */
+    //% blockId="VIEW128x64_plot_request"
+    //% group="Tegn på skjerm"
+    //% block="plot %plotVariable| på skjerm"
+    //% weight=100 blockGap=8
+    export function plot(plotVariable: number, screen?: 1) {
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        let plotLength = plotArray.length
+
+        if (plotLength == 127)     // If the length of the array has reached the max number of pixels, shift the array and remove the oldest value
+            plotArray.shift()
+
+        // Round the variable to use ints rather than floats
+        plotVariable = Math.round(plotVariable)
+        // Add the value to the end of the array
+        plotArray.push(plotVariable)
+
+        // If the variable exceeds the scale of the y axis, update the min or max limits
+        if (plotVariable > graphYMax)
+            graphYMax = plotVariable
+
+        if (plotVariable < graphYMin)
+            graphYMin = plotVariable
+
+        // 'for' loop plots the graph on the display
+        for (let arrayPosition = 0; arrayPosition <= plotLength; arrayPosition++) {
+
+            let x3 = arrayPosition  // Start of the screen (x-axis)
+            let yPlot = plotArray[arrayPosition]
+
+            // Map the variables to scale between the min and max values to the min and max graph pixel area
+            yPlot = pins.map(yPlot, graphYMin, graphYMax, GRAPH_Y_MIN_LOCATION, GRAPH_Y_MAX_LOCATION)
+
+            if (arrayPosition == 0)
+                previousYPlot = yPlot
+
+            let y3 = 0
+            let len = 0
+
+            // Determine if the line needs to be drawn from the last point to the new or visa-versa (vertical lines can only be drawn down the screen)
+            if (yPlot < previousYPlot) {
+
+                y3 = yPlot
+                len = (previousYPlot - yPlot)
+            } else if (yPlot > previousYPlot) {
+
+                y3 = previousYPlot
+                len = (yPlot - previousYPlot)
+            } else {
+
+                y3 = yPlot
+                len = 1
+            }
+
+            // Clear plots in screenBuffer
+            let page3 = 0
+
+            for (let pixel = GRAPH_Y_MAX_LOCATION; pixel <= GRAPH_Y_MIN_LOCATION; pixel++) {
+
+                page3 = pixel >> 3
+                let shift_page3 = pixel % 8
+                let ind5 = x3 + page3 * 128 + 1
+                let screenPixel3 = clearBit(screenBuf[ind5], shift_page3)   // Clear the screen data byte
+                screenBuf[ind5] = screenPixel3                              // Store data in screenBuffer
+            }
+
+            // Plot new data in screenBuffer
+            for (let pixel = y3; pixel < (y3 + len); pixel++) {
+
+                page3 = pixel >> 3
+                let shift_page4 = pixel % 8
+                let ind6 = x3 + page3 * 128 + 1
+                let screenPixel4 = (screenBuf[ind6] | (1 << shift_page4))   // Set the screen data byte
+                screenBuf[ind6] = screenPixel4                              // Store data in screen buffer
+            }
+
+            previousYPlot = yPlot
+        }
+
+        refresh() // Refresh screen with new data in screenBuffer
+    }
+
+
+    //////////////////////////////////////
+    //
+    //      Expert blocks
+    //
+    //////////////////////////////////////
+
+    /**
+     * Update or refresh the screen if any data has been changed.
+     * @param screen is screen selection when using multiple screens
+     */
+    //% group="Kontroller skjerm"
+    //% blockId="VIEW128x64_draw" block="oppdater skjerm"
+    //% weight=63 blockGap=8
+    // Send at most 32 data bytes before yielding to other tasks.
+    // Each packet sets its own page/column window in horizontal addressing mode.
+    function sendScreenBuffer(address: number) {
+        let position = pins.createBuffer(7)
+        position[0] = 0x00
+        position[1] = 0x21
+        position[4] = 0x22
+        let packet = pins.createBuffer(33)
+        packet[0] = 0x40
+        for (let page = 0; page < 8; page++) {
+            for (let column = 0; column < 128; column += 32) {
+                position[2] = column
+                position[3] = column + 31
+                position[5] = page
+                position[6] = page
+                for (let offset = 0; offset < 32; offset++) {
+                    packet[offset + 1] = screenBuf[1 + page * 128 + column + offset]
+                }
+                pins.i2cWriteBuffer(address, position)
+                pins.i2cWriteBuffer(address, packet)
+                basic.pause(1)
+            }
+        }
+        // Restore the full window for existing pixel and drawing functions.
+        position[2] = 0
+        position[3] = 127
+        position[5] = 0
+        position[6] = 7
+        pins.i2cWriteBuffer(address, position)
+        set_pos()
+    }
+
+    export function refresh(screen?: 1) {
+        displayAddress = setScreenAddr(screen)
+        if (initialised == 0)
+            initDisplay(1)
+        sendScreenBuffer(displayAddress)
+    }
+
+    /**
+     * Invert the colours on the screen (black to white, white to black)
+     * @param output toggles between inverting the colours of the display
+     */
+    //% group="Kontroller skjerm"
+    //% blockId="VIEW128x64_invert_screen" block="inverter skjerm %output=on_off_toggle"
+    //% weight=62 blockGap=8
+    export function invert(output: boolean, screen?: 1) {
+
+        let invertRegisterValue = 0
+
+        displayAddress = setScreenAddr(screen)
+
+        if (initialised == 0)
+            initDisplay(1)
+
+        if (output == true)
+            invertRegisterValue = 0xA7
+
+        else
+            invertRegisterValue = 0xA6
+
+        writeOneByte(invertRegisterValue)
+    }
+}
