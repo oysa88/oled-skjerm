@@ -485,6 +485,11 @@ namespace kitronik_VIEW128x64 {
 
             let startY = row * lineHeight
 
+            // Sentrer én linje med gigantisk tekst vertikalt.
+            if (fontZoom == 4 && inputString.length <= numberOfCharPerLine && row == 0) {
+                startY = Math.floor((64 - lineHeight) / 2)
+            }
+
             for (let c = 0; c < displayString.length; c++) {
                 let charCode = displayString.charCodeAt(c)
 
