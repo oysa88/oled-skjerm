@@ -166,7 +166,9 @@ namespace kitronik_VIEW128x64 {
         //% block="Normal"
         Normal,
         //% block="Stor"
-        Big
+        Big,
+        //% block="Gigantisk"
+        Giant
     }
 
     // Variables for Display
@@ -398,12 +400,15 @@ namespace kitronik_VIEW128x64 {
 
         globalZoomSet = true
 
-        if (fontSize == FontSelection.Big) {
+        if (fontSize == FontSelection.Giant) {
+            numberOfCharPerLine = 6
+            fontZoom = 4
 
+        } else if (fontSize == FontSelection.Big) {
             numberOfCharPerLine = 12
             fontZoom = 2
-        } else {
 
+        } else {
             numberOfCharPerLine = 25
             fontZoom = 1
         }
